@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>أذكار - عجلة الذكر</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Cairo font -->
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      background-color: #f7f7f7;
+    }
+
+    /* عجلة الأذكار */
+    .dhikr-wheel {
+      width: 300px;
+      height: 300px;
+      position: relative;
+      border-radius: 50%;
+      overflow: hidden;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    /* المؤشر (يمين العجلة) */
+    .pointer {
+      width: 0;
+      height: 0;
+      border-left: 15px solid transparent;
+      border-right: 15px solid transparent;
+      border-top: 25px solid #e53e3e;
+      position: absolute;
+      top: 50%;
+      right: -25px; /* على يمين العجلة */
+      transform: translateY(-50%) rotate(90deg); /* يشير للداخل */
+      z-index: 10;
+      filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.3));
+    }
+
+    /* حاوية النص: نفس أبعاد العجلة لتسهيل التموضع الدقيق */
+    .dhikr-text-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* النص داخل القطاع (يتم تحريكه من مركز العجلة بإزاحات x,y) */
+    .dhikr-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%); /* سيتم إضافة إزاحات إضافية ديناميكياً */
+      font-size: 14px;  /* سيتم تعديلها تلقائياً */
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.3;
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+      white-space: normal;
+      overflow: hidden;
+    }
+
+    /* زر البدء */
+    .start-button {
+      transition: all 0.3s ease;
+    }
+    .start-button:hover {
+      box-shadow: 0 4px 15px rgba(72, 187, 120, 0.6);
+      transform: translateY(-2px);
+    }
+    .start-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    /* قائمة الوقت */
+    .time-select {
+      cursor: pointer;
+      text-align: center;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.75rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border: 2px solid #38a169;
+      background-color: #ffffff;
+      font-weight: 600;
+      color: #1a202c;
+      width: 100px;
+      max-width: 100px;
+    }
+  </style>
+</head>
+<body class="p-4 flex flex-col items-center min-h-screen bg-gray-50">
+
+  <!-- العنوان -->
+  <h1 class="text-4xl font-bold text-gray-800 my-6">أذكار</h1>
+
+  <!-- التحكم -->
+  <div class="flex flex-row-reverse items-center justify-center gap-4 mb-10 w-full max-w-lg">
+
+    <div class="flex items-center bg-white p-3 rounded-xl shadow-md text-base font-semibold text-gray-700">
+      <label for="time-select" class="ml-2">المدة:</label>
+      <select id="time-select" class="time-select" onchange="updateTimeLimit()">
+        <option value="5" selected>5 دقائق</option>
+        <option value="10">10 دقائق</option>
+        <option value="15">15 دقيقة</option>
+        <option value="30">30 دقيقة</option>
+        <option value="45">45 دقيقة</option>
+        <option value="60">60 دقيقة</option>
+      </select>
+      <span id="timer-display" class="mr-2 text-lg">5:00</span>
+    </div>
+
+    <button id="start-button" onclick="startDhikr()" class="start-button bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-6 rounded-xl shadow-lg text-lg">
+      إبدأ
+    </button>
+  </div>
+
+  <!-- العجلة + المؤشر + حلقة التقدم -->
+  <div class="relative w-[300px] h-[300px] flex justify-center items-center">
+    <div id="pointer" class="pointer"></div>
+
+    <!-- حلقة التقدم -->
+    <svg class="progress-ring" viewBox="0 0 300 300" aria-hidden="true">
+      <!-- الخلفية -->
+      <circle class="ring-bg" cx="150" cy="150" r="146" fill="none" stroke-width="8"></circle>
+      <!-- التقدم -->
+      <circle id="ring-progress" class="ring-progress" cx="150" cy="150" r="146" fill="none" stroke-width="8" stroke-linecap="round" transform="rotate(-90 150 150)"></circle>
+    </svg>
+
+    <div class="dhikr-wheel" id="dhikr-wheel"></div>
+  </div>
+
+  <!-- نتيجة الذكر -->
+  <div class="text-center mt-10 text-xl font-semibold text-gray-700">
+    التركيز على ذكر :
+    <div id="expected-hassanat" class="text-3xl font-extrabold text-teal-600" role="status" aria-live="polite">حدد الذكر</div>
+  </div>
+
+  <!-- الاقتباس -->
+  <div class="w-full max-w-2xl mt-8 p-8 bg-white rounded-xl shadow-xl text-center border-t-4 border-teal-500">
+    <p id="benefit-quote" class="text-xl text-gray-700 leading-loose italic">
+      "اضغط إبدأ لتبدأ رحلة ذكر لمدة خمس دقائق"
+    </p>
+  </div>
+
+  <script>
+    // إعدادات عامة
+    let TIME_LIMIT_SECONDS = 5 * 60;
+    let remainingTime = TIME_LIMIT_SECONDS;
+    let timerInterval;
+    let isTimerRunning = false;
+    let totalRotation = 0;
+
+    // قائمة الأذكار
+    const adhkar = [
+      { text: "سبحان الله العظيم", color: "#f6e05e", benefit: "كلمتان خفيفتان على اللسان، ثقيلتان في الميزان." },
+      { text: "سبحان الله وبحمده", color: "#48bb78", benefit: "من قال سبحان الله وبحمده في يوم مئة مرة، حُطّت خطاياه وإن كانت مثل زبد البحر." },
+      { text: "الحمد لله", color: "#f6e05e", benefit: "أحب الكلام إلى الله عز وجل: الحمد لله." },
+      { text: "لا إله إلا الله", color: "#48bb78", benefit: "من قال لا إله إلا الله دخل الجنة." },
+      { text: "الله أكبر", color: "#f6e05e", benefit: "قال عمر بن الخطاب: قول العبد: الله أكبر خير من الدنيا وما فيها." },
+      { text: "لا حول ولا قوة إلا بالله", color: "#48bb78", benefit: "من قال: لا حول ولا قوة إلا بالله، كانت له عدل عشر رقاب، وكتب له مائة حسنة، ومحيت عنه مائة خطيئة، وكانت له حرزًا من الشيطان يومه ذلك حتى يمسي." },
+      { text: "أستغفر الله", color: "#f6e05e", benefit: "التوبة تزيل الذنوب وتفتح أبواب الرحمة." },
+      { text: "سبحان الله", color: "#48bb78", benefit: "ذكر قصير، أجر عظيم ورضا من الله." }
+    ];
+
+    const dhikrWheel = document.getElementById('dhikr-wheel');
+    const timerDisplay = document.getElementById('timer-display');
+    const startButton = document.getElementById('start-button');
+    const expectedHassanat = document.getElementById('expected-hassanat');
+    const benefitQuote = document.getElementById('benefit-quote');
+    const timeSelect = document.getElementById('time-select');
+    const numSegments = adhkar.length;
+    const segmentAngle = 360 / numSegments; // 45°
+    const CIRCLE_R = 150; // نصف قطر العجلة (300px / 2)
+
+    // حساب طول القوس المتاح للنص عند نصف قطر معيّن
+    function computeArcWidth(radiusPx, segmentAngleDeg, padding = 12) {
+      const arcLength = 2 * Math.PI * radiusPx * (segmentAngleDeg / 360);
+      return Math.max(Math.floor(arcLength - padding), 60);
+    }
+
+    // تصغير الخط ليلائم الصندوق حتى عدد أسطر محدد
+    function fitTextToBox(el, { max = 16, min = 10, maxLines = 2 } = {}) {
+      let size = max;
+      for (; size >= min; size--) {
+        el.style.fontSize = size + 'px';
+        const style = window.getComputedStyle(el);
+        const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3;
+        const fitsHeight = el.scrollHeight <= Math.ceil(lineHeight * maxLines);
+        const fitsWidth = el.scrollWidth <= el.clientWidth;
+        if (fitsHeight && fitsWidth) break;
+      }
+    }
+
+    // إنشاء مقاطع العجلة والنصوص
+    function createWheelSegments() {
+      dhikrWheel.innerHTML = '';
+
+      // خلفية العجلة: نبدأ من 90° ليقاس التقسيم من الأعلى
+      let gradientStops = [];
+      let currentAngle = 0;
+      adhkar.forEach((dhikr) => {
+        const nextAngle = currentAngle + segmentAngle;
+        gradientStops.push(`${dhikr.color} ${currentAngle}deg ${nextAngle}deg`);
+        currentAngle = nextAngle;
+      });
+      dhikrWheel.style.background = `conic-gradient(from 90deg, ${gradientStops.join(', ')})`;
+
+      // وضع النصوص: نحسب زاوية مركز كل قطاع، ثم نحرك النص من مركز العجلة بإزاحات (x, y)
+      const wrapper = document.createElement('div');
+      wrapper.className = 'dhikr-text-wrapper';
+      dhikrWheel.appendChild(wrapper);
+
+      const R = 120; // نصف القطر الفعلي لموضع النص (داخل الحافة بهامش مريح)
+      const MARGIN = 12; // هامش أمان من حافة العجلة
+      adhkar.forEach((dhikr, index) => {
+        const centerFromTopDeg = index * segmentAngle + (segmentAngle / 2); // زاوية من الأعلى
+        const theta = centerFromTopDeg * Math.PI / 180; // راديان
+
+        // إزاحات من المركز: x لليمين موجب، y لأعلى سالب
+        const x = Math.sin(theta) * R;
+        const y = -Math.cos(theta) * R;
+
+        const textDiv = document.createElement('div');
+        textDiv.textContent = dhikr.text;
+        textDiv.className = 'dhikr-text';
+
+        // عرض الصندوق يساوي تقريباً طول القوس عند نصف القطر R
+        const arcWidth = computeArcWidth(R, segmentAngle, 14);
+
+        // لمنع خروج الصندوق عن الدائرة خاصةً عند اليسار/اليمين:
+        // يجب أن يكون نصف العرض <= (CIRCLE_R - |x|) - هامش
+        const maxRectWidthInsideCircle = 2 * Math.max(0, (CIRCLE_R - Math.abs(x)) - MARGIN);
+        const finalWidth = Math.max(60, Math.min(arcWidth, maxRectWidthInsideCircle));
+        textDiv.style.width = finalWidth + 'px';
+
+        // حرك النص من مركز العجلة إلى الموضع المطلوب ثم أبقه أفقياً
+        textDiv.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+
+        textDiv.style.color = (index % 2 === 0) ? '#1a202c' : 'white';
+
+        wrapper.appendChild(textDiv);
+
+        // بعد الإضافة: ناسب حجم الخط حتى سطرين
+        fitTextToBox(textDiv, { max: 16, min: 10, maxLines: 2 });
+      });
+    }
+
+    function updateTimeLimit() {
+      if (isTimerRunning) return;
+      const selectedMinutes = parseInt(timeSelect.value);
+      TIME_LIMIT_SECONDS = selectedMinutes * 60;
+      remainingTime = TIME_LIMIT_SECONDS;
+      const initialMinutes = Math.floor(TIME_LIMIT_SECONDS / 60);
+      const initialSeconds = TIME_LIMIT_SECONDS % 60;
+      timerDisplay.textContent = `${initialMinutes}:${initialSeconds.toString().padStart(2, '0')}`;
+      resetProgressRing();
+    }
+
+    function updateTimer() {
+      if (remainingTime <= 0) {
+        clearInterval(timerInterval);
+        isTimerRunning = false;
+        startButton.disabled = false;
+        startButton.textContent = 'إبدأ مجدداً';
+        timerDisplay.textContent = '0:00';
+        benefitQuote.textContent = `أنجزت مدة ${TIME_LIMIT_SECONDS / 60} دقائق! جزيت خيراً.`;
+        timeSelect.disabled = false;
+        updateProgressRing(1); // مكتمل
+        return;
+      }
+      remainingTime--;
+      const minutes = Math.floor(remainingTime / 60);
+      const seconds = remainingTime % 60;
+      timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      const progress = 1 - (remainingTime / TIME_LIMIT_SECONDS);
+      updateProgressRing(progress);
+    }
+
+    function stopDhikr() {
+      // اختيار قطاع عشوائي
+      const randomIndex = Math.floor(Math.random() * numSegments);
+      const segmentCenterAngleFromTop = randomIndex * segmentAngle + (segmentAngle / 2); // قياساً من الأعلى
+
+      // تحويل مرجع الزاوية من الأعلى إلى اليمين (المؤشر على اليمين)
+      const centerFromRight = 90 - segmentCenterAngleFromTop;
+      const targetAngleCorrection = -centerFromRight; // محاذاة المركز للزاوية 0° يميناً
+
+      const slowSpins = 10;
+      const finalRotation = totalRotation + (360 * slowSpins) + targetAngleCorrection;
+
+      dhikrWheel.style.transition = 'transform 7s cubic-bezier(0.1, 0.5, 0.2, 1)';
+      dhikrWheel.style.transform = `rotate(${finalRotation}deg)`;
+      totalRotation = finalRotation;
+
+      setTimeout(() => {
+        const landedDhikr = adhkar[randomIndex];
+        expectedHassanat.textContent = landedDhikr.text;
+        benefitQuote.textContent = landedDhikr.benefit;
+      }, 7000);
+    }
+
+    function startDhikr() {
+      if (isTimerRunning) return;
+
+      clearInterval(timerInterval);
+      updateTimeLimit();
+
+      isTimerRunning = true;
+      startButton.disabled = true;
+      timeSelect.disabled = true;
+      startButton.textContent = 'جاري الذكر...';
+
+      expectedHassanat.textContent = 'جاري تحديد الذكر...';
+      benefitQuote.textContent = 'العجلة تدور لتحديد الذكر الذي ستركز عليه...';
+
+      timerInterval = setInterval(updateTimer, 1000);
+      updateTimer();
+
+      dhikrWheel.style.transition = 'transform 3s cubic-bezier(0.4, 0, 0.6, 1)';
+      totalRotation += (360 * 5);
+      dhikrWheel.style.transform = `rotate(${totalRotation}deg)`;
+
+      setTimeout(stopDhikr, 3000);
+    }
+
+    // ========= حلقة التقدم (Progress Ring) =========
+    const ringProgress = (() => document.getElementById('ring-progress'))();
+    const RING_R = 146; // نصف قطر المسار داخل 300px مع سمك 8px
+    const RING_CIRC = 2 * Math.PI * RING_R;
+
+    function setupProgressRing() {
+      if (!ringProgress) return;
+      ringProgress.style.strokeDasharray = String(RING_CIRC);
+      ringProgress.style.strokeDashoffset = '0';
+    }
+
+    function updateProgressRing(progress01) {
+      if (!ringProgress) return;
+      const clamped = Math.min(1, Math.max(0, progress01 || 0));
+      const offset = RING_CIRC * clamped;
+      ringProgress.style.strokeDashoffset = String(offset);
+    }
+
+    function resetProgressRing() {
+      updateProgressRing(0);
+    }
+
+    // ========= تهيئة =========
+    window.onload = function() {
+      createWheelSegments();
+      setupProgressRing();
+      updateTimeLimit(); // ضبط المؤقت والعرض والحلقة
+    };
+
+  </script>
+
+  <style>
+    /* حلقة التقدم حول العجلة فقط */
+    .progress-ring {
+      position: absolute;
+      inset: -4px; /* هامش بسيط للخارج */
+      width: 308px;
+      height: 308px;
+      z-index: 5; /* فوق العجلة وتحت المؤشر */
+      pointer-events: none;
+    }
+    .ring-bg {
+      stroke: rgba(0,0,0,0.06);
+    }
+    .ring-progress {
+      stroke: #14b8a6; /* teal-500 */
+      transition: stroke-dashoffset 0.3s linear;
+    }
+  </style>
+</body>
+</html>
